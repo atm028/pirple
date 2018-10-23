@@ -1,16 +1,21 @@
 const debug = require('debug')('http');
 const http = require('http');
 const url = require('url');
-const config = require('./config');
+const config = require('./lib/config');
 const {StringDecoder} = require('string_decoder'); 
+const handlers = require('./lib/handlers');
+const helpers = require('./lib/helpers');
 
 
 debug("Create HTTP Server");
 const httpServer = http.createServer((req, res) => {
     var parsedUrl = url.parse(req.url, true);
-    var path = parsedUrl.path;
+    var path = parsedUrl.pathname;
     var trimmedPath = path.replace(/^\/+|\/+$/g, '');
+    var queryStringObject = parsedUrl.query;
     var decoder = new StringDecoder('utf-8');
+    var method = req.method.toLowerCase();
+    var headers = req.headers;
     var buffer = '';
 
     req.on('data', (data) => { buffer += decoder.write(data); });
@@ -19,10 +24,18 @@ const httpServer = http.createServer((req, res) => {
         buffer += decoder.end();
         debug("reg: ", trimmedPath, buffer);
 
-        let handler = typeof(router[trimmedPath]) !== 'undefined' ? router[trimmedPath] : handlers.notFound;
-        debug("handler: ", handler);
+        let handler = typeof(router[trimmedPath]) !== 'undefined' 
+                        ? router[trimmedPath] : handlers.notFound;
 
-        handler(buffer, (code, payload) => {
+        var data = {
+            'trimmedPath': trimmedPath,
+            'queryStringObject': queryStringObject,
+            'method': method,
+            'headers': headers,
+            'payload': helpers.parseJsonToObject(buffer)
+        };
+        console.log(data);
+        handler(data, (code, payload) => {
             code = typeof(code) !== 'number' ? code : 200;
             payload = typeof(payload) == 'object' ? payload : {};
             let payloadString = JSON.stringify(payload);
@@ -37,18 +50,11 @@ const httpServer = http.createServer((req, res) => {
 debug("Start listening on port ", config.httpPort);
 httpServer.listen(config.httpPort, () => {
     debug("Server started listening on port: ", config.httpPort);
+    console.log("Server started listening on port: ", config.httpPort);
 });
 
-var handlers = {};
-
-handlers.hello = function(data, callback) {
-    callback(200, {"msg": "Hello! From the other side"});
-}
-
-handlers.notFound = function(data, callback) {
-    callback(404, {"msg": "Something goes wrong"});
-}
-
 router = {
-    "hello": handlers.hello
+    "hello": handlers.hello,
+    "users": handlers.users,
+    "tokens": handlers.tokens
 };
